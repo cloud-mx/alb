@@ -174,7 +174,7 @@ Outputs:
     Value: !Ref LoadBalancerSecurityGroup
     Export:
       Name: !Sub '${AWS::StackName}-SecurityGroupId'
-
+```
 
 # parametros
 ```yaml
