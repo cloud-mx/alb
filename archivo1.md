@@ -174,3 +174,84 @@ Outputs:
     Value: !Ref LoadBalancerSecurityGroup
     Export:
       Name: !Sub '${AWS::StackName}-SecurityGroupId'
+
+
+# parametros
+```yaml
+# This is an example input file for deploying the main Application Load Balancer template.
+# It defines two separate stacks: one for a 'dev' environment and one for a 'prd' environment.
+
+stacks:
+  # Deployment for the us-east-1 region
+  us-east-1:
+    
+    # ----------------------------------------------------------------
+    # DEVELOPMENT STACK: An internal-facing ALB for a backend API
+    # ----------------------------------------------------------------
+    DevApiALB:
+      template: templates/loadbalancing/elb-alb-main.cf-j2.yml
+      params:
+        # --> GEV Standard Parameters
+        UAI: "uai9876543"
+        AppName: "backend-api"
+        Env: "dev"
+        
+        # --> Networking and Security Parameters
+        Scheme: "internal" # This ALB is not exposed to the internet
+        SubnetIds: 
+          - "subnet-0abcdef123456789" # Private subnet 1
+          - "subnet-0fedcba987654321" # Private subnet 2
+        VpcId: "vpc-0a1b2c3d4e5f67890"
+        
+        # WebAclArn is left empty because the scheme is 'internal'
+        WebAclArn: "" 
+        
+        # --> Logging Parameter
+        AccessLogsS3BucketName: "gevernova-dev-logs"
+
+      jinjaparams:
+        # --> Jinja2 controlled settings
+        idle_timeout_seconds: 60       # Default idle timeout for dev
+        drop_invalid_headers: true
+        create_http_redirect: false    # No redirect needed for an internal API
+        extra_tags:
+          - Key: "Owner"
+            Value: "api-dev-team"
+          - Key: "Project"
+            Value: "ProjectPhoenix"
+
+    # ----------------------------------------------------------------
+    # PRODUCTION STACK: A public-facing ALB for a web application
+    # ----------------------------------------------------------------
+    ProdWebAppALB:
+      template: templates/loadbalancing/elb-alb-main.cf-j2.yml
+      params:
+        # --> GEV Standard Parameters
+        UAI: "uai1234567"
+        AppName: "webapp-frontend"
+        Env: "prd"
+
+        # --> Networking and Security Parameters
+        Scheme: "internet-facing" # This ALB is public
+        SubnetIds: 
+          - "subnet-0111222333444555" # Public subnet 1
+          - "subnet-0666777888999000" # Public subnet 2
+        VpcId: "vpc-0a1b2c3d4e5f67890"
+
+        # WebAclArn is MANDATORY for internet-facing ALBs to ensure security compliance
+        WebAclArn: "arn:aws:wafv2:us-east-1:111122223333:regional/webacl/GEV-Standard-Prod-WAF/a1b2c3d4-e5f6-7890-g1h2-i3j4k5l6m7n8"
+        
+        # --> Logging Parameter
+        AccessLogsS3BucketName: "gevernova-prod-logs-us-east-1"
+
+      jinjaparams:
+        # --> Jinja2 controlled settings
+        idle_timeout_seconds: 400       # Longer timeout for potentially long-running web sessions
+        drop_invalid_headers: true
+        create_http_redirect: true     # Enforce HTTPS by redirecting HTTP traffic
+        extra_tags:
+          - Key: "DataClassification"
+            Value: "Public"
+          - Key: "CostCenter"
+            Value: "54321"
+```
