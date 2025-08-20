@@ -1,4 +1,86 @@
+NLB set: **`elb-nlb-main.cf-j2.yml`**.
 
+This parameter file will demonstrate how to deploy the main Network Load Balancer for two different scenarios, similar to our ALB example: a production internal-facing NLB and a development internet-facing one.
+
+---
+
+### Parameter Input File: `stack_input_nlb_main.yml`
+
+```yaml
+# This is an example input file for deploying the main Network Load Balancer template.
+# It defines two separate stacks: one for a 'prd' environment and one for a 'dev' environment.
+
+stacks:
+  # Deployment for the us-east-1 region
+  us-east-1:
+    
+    # ----------------------------------------------------------------
+    # PRODUCTION STACK: An internal-facing NLB for a high-performance backend service
+    # ----------------------------------------------------------------
+    ProdHighPerfNLB:
+      template: templates/loadbalancing/elb-nlb-main.cf-j2.yml
+      params:
+        # --> GEV Standard Parameters
+        UAI: "uai3344556"
+        AppName: "high-perf-svc"
+        Env: "prd"
+        
+        # --> Networking and Security Parameters
+        Scheme: "internal" # This NLB is not exposed to the internet, ideal for internal microservices
+        SubnetIds: 
+          - "subnet-0abcdef123456789" # Private subnet 1
+          - "subnet-0fedcba987654321" # Private subnet 2
+        
+        # --> Logging Parameter
+        AccessLogsS3BucketName: "gevernova-prod-logs-us-east-1"
+
+      jinjaparams:
+        # --> Jinja2 controlled settings
+        cross_zone_enabled: true      # Recommended for high availability in production
+        deletion_protection: true     # Protect this critical resource from accidental deletion
+        enable_access_logs: true
+        extra_tags:
+          - Key: "Owner"
+            Value: "backend-team"
+          - Key: "Tier"
+            Value: "1"
+
+    # ----------------------------------------------------------------
+    # DEVELOPMENT STACK: An internet-facing NLB for testing a game server
+    # ----------------------------------------------------------------
+    DevGameServerNLB:
+      template: templates/loadbalancing/elb-nlb-main.cf-j2.yml
+      params:
+        # --> GEV Standard Parameters
+        UAI: "uai7788990"
+        AppName: "game-server"
+        Env: "dev"
+
+        # --> Networking and Security Parameters
+        Scheme: "internet-facing" # This NLB is public to accept connections from test clients
+        SubnetIds: 
+          - "subnet-0111222333444555" # Public subnet 1
+        
+        # --> Logging Parameter (Using a different bucket for dev)
+        AccessLogsS3BucketName: "gevernova-dev-logs"
+
+      jinjaparams:
+        # --> Jinja2 controlled settings
+        cross_zone_enabled: false     # May not be needed for simple dev testing, saves cross-zone data costs
+        deletion_protection: false    # Easy to tear down and recreate in dev
+        enable_access_logs: true
+        extra_tags:
+          - Key: "Purpose"
+            Value: "Development and Testing"
+
+```
+
+### How to Use This File for Testing:
+
+1.  **Save the file** as `stack_input_nlb_main.yml` in your deployment setup.
+2.  **Replace placeholder values** (like `subnet-0...`, `vpc-0...`, and S3 bucket names) with actual values from your AWS testing environment.
+3.  **Deploy the stacks** using your deployment engine (which processes the Jinja2 and then calls CloudFormation). You can choose to deploy just one stack (e.g., `DevGameServerNLB`) or both.
+4.  **Verify in AWS Console:** After a successful deployment, you should see two new Network Load Balancers in the EC2 console, each with the correct scheme, tags, and attributes (like deletion protection and cross-zone load balancing) as defined in this file.
 ---
 
 ### 2. Template: `elb-alb-main.cf-j2.yml` (English)
