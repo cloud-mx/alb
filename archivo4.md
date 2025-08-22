@@ -1,3 +1,215 @@
+# Archivo de Parámetros Correspondiente (nlb-main-params.yml)
+# nlb-main-params.yml
+
+```yaml
+stacks:
+  us1:
+    NlbMain:
+      template: templates/nlb/nlb-main.cf-j2.yml
+      params:
+        UAI: "uai3055511"
+        Env: "dev"
+        AppName: "webapp"
+        VpcId: "vpc-12345678"
+        NLBScheme: "internet-facing"
+        SubnetIds: "subnet-12345678,subnet-87654321"
+        NLBSecurityGroupId: { "stack_output": "NlbSecurityPrereqs.NLBSecurityGroupId" }
+        AccessLogsBucketName: { "stack_output": "NlbSecurityPrereqs.AccessLogsBucketName" }
+        Protocol: "TCP"
+        Port: 80
+        TargetPort: 80
+        TargetProtocol: "TCP"
+        HealthCheckPath: "/health"
+        HealthCheckPort: "traffic-port"
+        HealthCheckProtocol: "HTTP"
+        CertificateArn: ""
+        TargetType: "instance"
+
+      jinjaparams:
+        # No additional jinja parameters needed
+```
+# nlb-main.cf-j2.yml - AWS Network Load Balancer Main Template
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'GEV NLB Main Template - Network Load Balancer with Target Groups and Listeners'
+
+Parameters:
+  UAI:
+    Type: String
+    Description: Unique Application Identifier
+    AllowedPattern: '^uai[0-9]{7}$'
+    ConstraintDescription: Must start with uai followed by 7 digits
+  Env:
+    Type: String
+    Description: Deployment Environment
+    AllowedValues: ['dev', 'qa', 'prd', 'lab', 'stg', 'dr']
+    Default: 'dev'
+  AppName:
+    Type: String
+    Description: Application Name (lowercase, 3-20 chars)
+    AllowedPattern: '^[a-z][a-z0-9\-]*[a-z0-9]$'
+    MinLength: 3
+    MaxLength: 20
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID for NLB deployment
+  NLBScheme:
+    Type: String
+    Description: NLB Scheme (internet-facing or internal)
+    AllowedValues: ['internet-facing', 'internal']
+    Default: 'internet-facing'
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of subnet IDs for NLB deployment (minimum 2 for HA)
+  NLBSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security Group ID from prerequisites template
+  AccessLogsBucketName:
+    Type: String
+    Description: S3 Bucket Name for access logs from prerequisites
+  Protocol:
+    Type: String
+    Description: Protocol for NLB listeners
+    AllowedValues: ['TCP', 'UDP', 'TLS']
+    Default: 'TCP'
+  Port:
+    Type: Number
+    Description: Port for NLB listener
+    Default: 80
+    MinValue: 1
+    MaxValue: 65535
+  TargetPort:
+    Type: Number
+    Description: Port for target group
+    Default: 80
+    MinValue: 1
+    MaxValue: 65535
+  TargetProtocol:
+    Type: String
+    Description: Protocol for target group
+    AllowedValues: ['TCP', 'UDP', 'TLS']
+    Default: 'TCP'
+  HealthCheckPath:
+    Type: String
+    Description: Health check path for HTTP/HTTPS health checks
+    Default: '/health'
+  HealthCheckPort:
+    Type: String
+    Description: Health check port
+    Default: 'traffic-port'
+  HealthCheckProtocol:
+    Type: String
+    Description: Health check protocol
+    AllowedValues: ['HTTP', 'HTTPS', 'TCP']
+    Default: 'HTTP'
+  CertificateArn:
+    Type: String
+    Description: ACM Certificate ARN for TLS listeners
+    Default: ''
+  TargetType:
+    Type: String
+    Description: Target type for target group
+    AllowedValues: ['instance', 'ip', 'lambda']
+    Default: 'instance'
+
+Conditions:
+  IsTLS: !Equals [!Ref Protocol, 'TLS']
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+  UseTLSHealthCheck: !Equals [!Ref HealthCheckProtocol, 'HTTPS']
+  IsInternetFacing: !Equals [!Ref NLBScheme, 'internet-facing']
+
+Resources:
+  # Network Load Balancer
+  NetworkLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${UAI}-${AppName}-${Env}-nlb'
+      Scheme: !Ref NLBScheme
+      Type: network
+      Subnets: !Ref SubnetIds
+      SecurityGroups:
+        - !Ref NLBSecurityGroupId
+      LoadBalancerAttributes:
+        - Key: load_balancing.cross_zone.enabled
+          Value: 'true'
+        - Key: access_logs.s3.enabled
+          Value: 'true'
+        - Key: access_logs.s3.bucket
+          Value: !Ref AccessLogsBucketName
+        - Key: access_logs.s3.prefix
+          Value: !Sub '${UAI}-${AppName}-${Env}-nlb'
+      Tags:
+        - Key: uai
+          Value: !Ref UAI
+        - Key: env
+          Value: !Ref Env
+        - Key: appname
+          Value: !Ref AppName
+        - Key: Name
+          Value: !Sub '${UAI}-${AppName}-${Env}-nlb'
+
+  # Target Group
+  NlbTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${UAI}-${AppName}-${Env}-tg'
+      Port: !Ref TargetPort
+      Protocol: !Ref TargetProtocol
+      VpcId: !Ref VpcId
+      TargetType: !Ref TargetType
+      HealthCheckProtocol: !Ref HealthCheckProtocol
+      HealthCheckPort: !Ref HealthCheckPort
+      HealthCheckPath: !If [UseTLSHealthCheck, !Ref HealthCheckPath, !Ref "AWS::NoValue"]
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 3
+      Tags:
+        - Key: uai
+          Value: !Ref UAI
+        - Key: env
+          Value: !Ref Env
+        - Key: appname
+          Value: !Ref AppName
+        - Key: Name
+          Value: !Sub '${UAI}-${AppName}-${Env}-tg'
+
+  # Listener
+  NlbListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref NetworkLoadBalancer
+      Port: !Ref Port
+      Protocol: !Ref Protocol
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref NlbTargetGroup
+      Certificates: !If [IsTLS, [{CertificateArn: !Ref CertificateArn}], !Ref "AWS::NoValue"]
+      SslPolicy: !If [IsTLS, 'ELBSecurityPolicy-TLS13-1-2-2021-06', !Ref "AWS::NoValue"]
+    DependsOn:
+      - NetworkLoadBalancer
+      - NlbTargetGroup
+
+Outputs:
+  NlbArn:
+    Description: Network Load Balancer ARN
+    Value: !Ref NetworkLoadBalancer
+    Export:
+      Name: !Sub '${UAI}-${AppName}-${Env}-nlb-arn'
+  NlbDnsName:
+    Description: Network Load Balancer DNS Name
+    Value: !GetAtt NetworkLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${UAI}-${AppName}-${Env}-nlb-dns'
+  TargetGroupArn:
+    Description: Target Group ARN
+    Value: !Ref NlbTargetGroup
+    Export:
+      Name: !Sub '${UAI}-${AppName}-${Env}-tg-arn'
+  ListenerArn:
+    Description: Listener ARN
+    Value: !Ref NlbListener
+    Export:
+      Name: !Sub '${UAI}-${AppName}-${Env}-listener-arn'
+
 # nlb-security-prereqs.cf-j2.yml
 ```yaml
 AWSTemplateFormatVersion: '2010-09-09'
