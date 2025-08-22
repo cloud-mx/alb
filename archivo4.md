@@ -180,3 +180,27 @@ Outputs:
     Export:
       Name: !Sub '${UAI}-${AppName}-${Env}-access-logs-bucket'
 ```
+# nlb-security-prereqs-params.yml
+```yaml
+# AWS NLB Security Prerequisites Parameters
+# Template: nlb-security-prereqs.cf-j2.yml
+
+stacks:
+  us1:
+    NlbSecurityPrereqs:
+      template: templates/nlb/nlb-security-prereqs.cf-j2.yml
+      params:
+        UAI: "uai3055511"  # Replace with actual UAI
+        Env: "dev"         # Environment: dev, qa, prd, lab, stg, dr
+        AppName: "webapp"  # Application name (3-20 chars, lowercase)
+        VpcId: "vpc-12345678"  # Replace with actual VPC ID
+        NLBScheme: "internet-facing"  # or "internal"
+        AllowedIngressCidr: "0.0.0.0/0"  # For internet-facing, use 0.0.0.0/0; for internal, use VPC CIDR
+        NLBPorts: "80,443"  # Comma-separated list of ports for NLB
+        TargetPorts: "80"   # Comma-separated list of ports for targets
+        AccessLogsBucketName: ""  # Leave empty for auto-generated name
+
+      jinjaparams:
+        # No additional jinja parameters needed for this template
+```
+
