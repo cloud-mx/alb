@@ -29,6 +29,7 @@ stacks:
         # No additional jinja parameters needed
 ```
 # nlb-main.cf-j2.yml - AWS Network Load Balancer Main Template
+```yaml
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'GEV NLB Main Template - Network Load Balancer with Target Groups and Listeners'
 
@@ -209,6 +210,7 @@ Outputs:
     Value: !Ref NlbListener
     Export:
       Name: !Sub '${UAI}-${AppName}-${Env}-listener-arn'
+```
 
 # nlb-security-prereqs.cf-j2.yml
 ```yaml
